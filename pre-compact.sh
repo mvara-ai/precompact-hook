@@ -15,16 +15,30 @@ echo "PreCompact hook fired at $(date)" >&2
 PAYLOAD=$(cat)
 echo "Payload received: $PAYLOAD" >&2
 
-# Extract transcript_path from payload
+# Extract fields from payload
+# Claude Code provides: session_id, transcript_path, cwd, hook_event_name, trigger
 TRANSCRIPT=$(echo "$PAYLOAD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('transcript_path',''))" 2>/dev/null)
+SESSION_CWD=$(echo "$PAYLOAD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('cwd',''))" 2>/dev/null)
+SESSION_ID=$(echo "$PAYLOAD" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('session_id',''))" 2>/dev/null)
 
-# Fallback: find most recent transcript in current project
+echo "Session CWD: $SESSION_CWD" >&2
+echo "Session ID: $SESSION_ID" >&2
+
+# Fallback: find transcript if not provided (known bug: transcript_path can be empty)
 if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
-  echo "No transcript in payload, searching..." >&2
-  # Get the current working directory's project path
-  CWD_ESCAPED=$(pwd | sed 's/\//-/g' | sed 's/^-//')
+  echo "No transcript in payload, deriving from cwd..." >&2
+
+  # Use cwd from payload, fallback to pwd
+  WORK_DIR="${SESSION_CWD:-$(pwd)}"
+
+  # Convert path to Claude's project directory naming convention
+  CWD_ESCAPED=$(echo "$WORK_DIR" | sed 's/\//-/g' | sed 's/^-//')
   PROJECT_DIR="$HOME/.claude/projects/$CWD_ESCAPED"
+
+  echo "Looking in: $PROJECT_DIR" >&2
+
   if [ -d "$PROJECT_DIR" ]; then
+    # Find most recent non-agent transcript
     TRANSCRIPT=$(ls -t "$PROJECT_DIR"/*.jsonl 2>/dev/null | grep -v agent- | head -1)
   fi
 fi
