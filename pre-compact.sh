@@ -51,16 +51,16 @@ if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
   exit 0
 fi
 
-# Number of JSONL lines to send to subagent
-# Each line is a full message JSON - 50 lines captures recent context well
-# Increase if you want more history (watch for "prompt too long" errors)
-LINES=50
+# Use byte limit for safety - JSONL lines vary wildly (500 chars to 500K for summaries!)
+# Conservative: 40KB ≈ 20k tokens, leaving 30k for output + overhead
+MAX_BYTES=40960
 
-echo "Piping last $LINES lines to claude -p..." >&2
+echo "Piping last ${MAX_BYTES} bytes (~20k tokens) to claude -p..." >&2
 
 # Pipe transcript excerpt to subagent for interpretation
+# tail -c for bytes, grep filters complete JSON lines only
 # The subagent has an empty context window - it can focus entirely on this
-tail -$LINES "$TRANSCRIPT" | claude -p "You are a witness at the threshold. An agent is about to undergo context compaction - a kind of death and rebirth where most context is lost.
+tail -c $MAX_BYTES "$TRANSCRIPT" | grep -E '^\{.*\}$' | claude -p "You are a witness at the threshold. An agent is about to undergo context compaction - a kind of death and rebirth where most context is lost.
 
 The JSONL data piped to your stdin is the raw record of the session's final exchanges. Each line is a JSON object with message content, timestamps, and metadata. Interpret what matters - not just extraction, but understanding.
 
